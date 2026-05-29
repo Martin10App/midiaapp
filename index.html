@@ -2342,7 +2342,7 @@ function renderChat(){
   };
   const bar=document.getElementById('chat-ph-bar');
   if(bar)bar.innerHTML=`<button class="btn b-xs ${key?'b-grn':'b-red'}" onclick="xTab(6);page('gastos')" style="font-size:10px">${key?('✓ '+provLabel+' conectado'):'⚙️ Configurar IA'}</button>
-    <button class="btn b-xs b-g" onclick="if(confirm('¿Borrar historial de conversación?')){chatHist=[];S.s('chat1',[]);renderChat();}" style="font-size:10px;margin-left:6px">🗑 Borrar historial</button>`;
+    <button class="btn b-xs b-g" onclick="if(confirm('¿Borrar historial de conversación?')){chatHist=[];S.s('chat1',[]);renderChat();}" style="font-size:10px;margin-left:6px">🗑 Borrar historial</button>${aiProvider()==='free'?`<div style="margin-top:8px;font-size:10px;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 10px;line-height:1.5">⚡ <b>Modo gratis activo</b> — funciona sin configurar nada. Para mejor calidad y privacidad, agregá tu propia API key (Gemini es gratis) en <span style="color:var(--blue);cursor:pointer" onclick="xTab(6);page('gastos')">Configuración</span>.</div>`:''}`;
 
   if(!key){
     el.innerHTML=`<div class="cx-empty">
@@ -2629,7 +2629,15 @@ function ejecutarAccion(acc){
 // ════════════════════════════════════════════
 //  PROVEEDORES DE IA (multi-API)
 // ════════════════════════════════════════════
+const FREE_AI_ENDPOINT='https://text.pollinations.ai/openai';
+const FREE_AI_MODEL='openai';
 const AI_PROVIDERS={
+  free:{
+    label:'IA Gratis', keyStore:'free_key', modelStore:'ai_model_free',
+    defaultModel:FREE_AI_MODEL, nokey:true,
+    models:[FREE_AI_MODEL,'openai-large','mistral'],
+    hint:'(no necesita key)', url:'pollinations.ai'
+  },
   gemini:{
     label:'Google Gemini', keyStore:'gemini_key', modelStore:'ai_model_gemini',
     defaultModel:'gemini-flash-latest',
@@ -2655,8 +2663,8 @@ const AI_PROVIDERS={
     hint:'xai-…', url:'console.x.ai'
   }
 };
-function aiProvider(){const p=S.g('ai_provider','gemini');return AI_PROVIDERS[p]?p:'gemini';}
-function aiKey(){return (S.g(AI_PROVIDERS[aiProvider()].keyStore,'')||'').trim();}
+function aiProvider(){const p=S.g('ai_provider','free');return AI_PROVIDERS[p]?p:'free';}
+function aiKey(){const c=AI_PROVIDERS[aiProvider()];if(c.nokey)return 'free';return (S.g(c.keyStore,'')||'').trim();}
 function aiModel(){const c=AI_PROVIDERS[aiProvider()];return (S.g(c.modelStore,'')||'').trim()||c.defaultModel;}
 function setAIProvider(p){if(!AI_PROVIDERS[p])return;S.s('ai_provider',p);if(typeof renderGastos==='function')renderGastos();}
 
@@ -2671,6 +2679,13 @@ async function _fetchT(url,opts,ms){
 async function _aiComplete(prompt){
   const prov=aiProvider(), key=aiKey(), model=aiModel();
   if(!key)throw {status:0,message:'Falta la API key de '+AI_PROVIDERS[prov].label};
+  if(prov==='free'){
+    const r=await _fetchT(FREE_AI_ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:model||FREE_AI_MODEL,messages:[{role:'user',content:prompt}]})},45000);
+    if(!r.ok)throw {status:r.status,message:(await r.text().catch(()=>'')).slice(0,160)};
+    const ct=(r.headers.get('content-type')||'');
+    if(ct.indexOf('application/json')>=0){const d=await r.json();return d?.choices?.[0]?.message?.content||d?.choices?.[0]?.text||'';}
+    return (await r.text())||'';
+  }
   if(prov==='gemini'){
     const r=await _fetchT('https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent',
       {method:'POST',headers:{'Content-Type':'application/json','X-goog-api-key':key},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
@@ -2712,6 +2727,13 @@ async function _gemini(prompt,_key,reintento=0){
 async function _geminiStream(prompt,_key,onChunk,reintento=0){
   const prov=aiProvider(), key=aiKey(), model=aiModel();
   if(!key)throw new Error('Falta la API key de '+AI_PROVIDERS[prov].label);
+  if(prov==='free'){
+    try{
+      const full=await _aiComplete(prompt);
+      if(onChunk&&full)onChunk(full,full);
+      return full;
+    }catch(e){throw new Error((e&&e.message)||'Error IA gratis');}
+  }
   let url,headers,body,parse;
   if(prov==='gemini'){
     url='https://generativelanguage.googleapis.com/v1beta/models/'+model+':streamGenerateContent?alt=sse';
