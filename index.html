@@ -1165,9 +1165,9 @@ async function askAIDiet(){
   const goal=p.goal||'no especificado';
   const diet=p.dietRestrictions||'ninguna';
   const gymSummary=routines.length?'Rutina activa: '+routines.find(r=>r.id===activeRid)?.name+', '+(gymHist.length?'última sesión: '+gymHist[0]?.dn+' '+gymHist[0]?.pct+'%':''):'Sin rutina';
-  const todayStr=new Date().toLocaleDateString('es-UY',{weekday:'long',day:'numeric',month:'long'});
+  const fechaHoy=new Date().toLocaleDateString('es-UY',{weekday:'long',day:'numeric',month:'long'});
 
-  const prompt='Sos un nutricionista deportivo experto. Dado el siguiente perfil, armá un plan de alimentación para HOY ('+todayStr+'). Respondé SOLO con un JSON sin texto extra ni bloques de código:\n\n'+
+  const prompt='Sos un nutricionista deportivo experto. Dado el siguiente perfil, armá un plan de alimentación para HOY ('+fechaHoy+'). Respondé SOLO con un JSON sin texto extra ni bloques de código:\n\n'+
     'Perfil: '+w+h+e+' Objetivo:'+goal+' Restricciones:'+diet+'\n'+gymSummary+'\n\n'+
     'Formato JSON:\n{"plan":[{"momento":"Desayuno","comida":"...","calorias":0,"proteinas":0,"nota":"..."},{"momento":"Media mañana","comida":"...","calorias":0,"proteinas":0,"nota":"..."},{"momento":"Almuerzo","comida":"...","calorias":0,"proteinas":0,"nota":"..."},{"momento":"Merienda","comida":"...","calorias":0,"proteinas":0,"nota":"..."},{"momento":"Cena","comida":"...","calorias":0,"proteinas":0,"nota":"..."},{"momento":"Post-entreno (opcional)","comida":"...","calorias":0,"proteinas":0,"nota":"..."}],"totalCalorias":0,"totalProteinas":0,"consejo":"...","aguaRecomendada":"..."}\n\n'+
     'REGLAS:\n- Comidas realistas para Uruguay (comida común: carne, arroz, fideos, papa, huevo, leche, fruta)\n'+
@@ -2647,6 +2647,12 @@ const AI_PROVIDERS={
     defaultModel:'claude-haiku-4-5-20251001',
     models:['claude-haiku-4-5-20251001','claude-sonnet-4-6','claude-opus-4-6'],
     hint:'sk-ant-…', url:'console.anthropic.com/settings/keys'
+  },
+  grok:{
+    label:'xAI · Grok', keyStore:'grok_key', modelStore:'ai_model_grok',
+    defaultModel:'grok-4.3',
+    models:['grok-4.3','grok-4-fast-reasoning','grok-3-mini'],
+    hint:'xai-…', url:'console.x.ai'
   }
 };
 function aiProvider(){const p=S.g('ai_provider','gemini');return AI_PROVIDERS[p]?p:'gemini';}
@@ -2672,8 +2678,9 @@ async function _aiComplete(prompt){
     const d=await r.json();
     return d?.candidates?.[0]?.content?.parts?.[0]?.text||'';
   }
-  if(prov==='openai'){
-    const r=await _fetchT('https://api.openai.com/v1/chat/completions',
+  if(prov==='openai'||prov==='grok'){
+    const _url=prov==='grok'?'https://api.x.ai/v1/chat/completions':'https://api.openai.com/v1/chat/completions';
+    const r=await _fetchT(_url,
       {method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},body:JSON.stringify({model,messages:[{role:'user',content:prompt}]})});
     if(!r.ok)throw {status:r.status,message:(await r.text().catch(()=>'')).slice(0,160)};
     const d=await r.json();
@@ -2711,8 +2718,8 @@ async function _geminiStream(prompt,_key,onChunk,reintento=0){
     headers={'Content-Type':'application/json','X-goog-api-key':key};
     body={contents:[{parts:[{text:prompt}]}]};
     parse=j=>j?.candidates?.[0]?.content?.parts?.[0]?.text||'';
-  }else if(prov==='openai'){
-    url='https://api.openai.com/v1/chat/completions';
+  }else if(prov==='openai'||prov==='grok'){
+    url=prov==='grok'?'https://api.x.ai/v1/chat/completions':'https://api.openai.com/v1/chat/completions';
     headers={'Content-Type':'application/json','Authorization':'Bearer '+key};
     body={model,stream:true,messages:[{role:'user',content:prompt}]};
     parse=j=>j?.choices?.[0]?.delta?.content||'';
